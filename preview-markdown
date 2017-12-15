@@ -1,0 +1,161 @@
+#!/usr/bin/env bash
+# vim: noexpandtab ts=4 sw=4 ft=sh:
+
+PM_CSS_URL=${PM_CSS_URL:-"https://gist.githubusercontent.com/augustohp/a35e1ef181bd26e8da10/raw/ae966d9d0806eb1e24462d88082a0264438adc50/github-pandoc.css"}
+PM_MARKDOWN_EXTENSION=${PM_MARKDOWN_EXTENSION:-"md"}
+PM_DEFAULT_INPUT="README.md"
+
+set -e
+if [ $DEBUG == "true" ]
+then
+	set -x
+else
+	set +x
+fi
+
+pm_pandoc_css()
+{
+	local cache_file
+
+	cache_file="/tmp/preview-markdown.css"
+	if [ ! -f $cache_file ]
+	then
+		curl --location --silent --output "${cache_file}" "${PM_CSS_URL}"
+	fi
+
+	echo $cache_file
+}
+
+pm_open()
+{
+	local file_path
+	local lynx
+
+	if [ $PM_OPT_AVOID_OPEN == true ]
+	then
+		return 0
+	fi
+
+	file_path=$1
+	lynx=$(which lynx)
+	if [ ! -f "${file_path}" ]
+	then
+		echo "Preview file not found: ${file_path}" 1>&2
+		exit 2
+	fi
+
+	if [ -z "${lynx}" ] || [ $PM_OPT_AVOID_LYNX == "true" ]
+	then
+		open "${file_path}"
+		return 0
+	fi
+
+	lynx "${file_path}"
+	return 0
+}
+
+pm_pandoc()
+{
+	local pandoc
+	local brew
+
+	pandoc=$(which pandoc)
+	brew=$(which brew)
+	if [ -z "${pandoc}" ] && [ -z "${brew}" ]
+	then
+		echo "Please, install Brew (https://brew.sh) or Pandoc (http://pandoc.org)." 1>&2
+		exit 2
+	fi
+	if [ -z "${pandoc}" ]
+	then
+		echo "Installing Pandoc (http://pandoc.org) for you ..."
+		$brew install pandoc | sed "s/^/    /"
+	fi
+
+	pandoc \
+		--css $(pm_pandoc_css) \
+		$@
+}
+
+pm_main()
+{
+	local file_to_preview
+	local basename
+	local preview_file
+
+	file_to_preview=$1
+	basename=$(basename "${file_to_preview}")
+	preview_file=${2:-"/tmp/preview-markdown_${basename%%$PM_MARKDOWN_EXTENSION}html"}
+	if [ ! -f "${file_to_preview}" ]
+	then
+		echo "File does not exist: ${file_to_preview}" 1>&2
+		exit 2
+	fi
+	if [ -f "${preview_file}" ]
+	then
+		rm "${preview_file}"
+	fi
+
+	pm_pandoc -o "${preview_file}" "${file_to_preview}" && echo "${preview_file}"
+	pm_open "${preview_file}"
+}
+
+pm_help() 
+{
+	cat <<-HELP
+	Usage: preview-markdown [options]
+	       preview-markdown --from README.md
+	       preview-markdown --from README.md --output README.html
+
+	Will generate an HTML preview of a markfown <file> and open it inside a
+	browser (lynx if existing).
+
+	Options:
+	    -f <path>, --from       The markdown file to generate a preview from.
+	                            Default: README.md
+	    -o <path>, --output     The output file which will hold the preview.
+	    -b, --browser           Prefer a real browser (e.g: Firefox) instead of
+	                            Lynx (if it is available).
+	    -j, --just-preview      Avoids opening the browser, just generates the
+	                            preview file as HTML.
+	    -v, --version           Prints version of the program.
+	    -h, --help              This help message.
+	Environment variables:
+	    PM_CSS_URL              The CSS file to be used for the rendered mardown.
+	                            Default: GitHub markdown style
+	    PM_MARKDOWN_EXTENSION   File extension to remove from the generated
+	                            preview file.
+	                            Default: md
+	    PM_DEFAULT_INPUT        If no options are passed, which file should be
+	                            used as input?
+	                            Default: README.md
+
+	Report issues on https://github.com/augustohp/preview-markdown.
+	Contact me over augusto.hp [at] gmail [dot] com.
+	HELP
+}
+
+if [ $# -eq 0 ] && [ ! -f "${PM_DEFAULT_INPUT}" ]
+then
+	echo "Invalid usage of program, use '$0 --help' for more information." 1>&2
+	exit 1
+fi
+
+PM_OPT_AVOID_LYNX=false
+PM_OPT_AVOID_OPEN=false
+while [ $# -gt 0 ]
+do
+	case "$1" in
+		'-?'|-h|--help) pm_help; exit 0 ;;
+		-v|--version) echo "preview-markdown 1.0.0"; exit 0 ;;
+		-b|--browser) PM_OPT_AVOID_LYNX=true ;;
+		-j|--just-preview) PM_OPT_AVOID_OPEN=true ;;
+		-f|--from) PM_OPT_INPUT="${2}"; shift ;;
+		-o|--output) PM_OPT_OUTPUT="${2}"; shift ;;
+		*) pm_help; exit 1 ;;
+	esac
+	shift
+done
+
+pm_main "${PM_OPT_INPUT:-"README.md"}" "${PM_OPT_OUTPUT:-}"
+exit 0
