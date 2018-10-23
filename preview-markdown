@@ -4,6 +4,7 @@
 PM_CSS_URL=${PM_CSS_URL:-"https://gist.githubusercontent.com/augustohp/a35e1ef181bd26e8da10/raw/ae966d9d0806eb1e24462d88082a0264438adc50/github-pandoc.css"}
 PM_MARKDOWN_EXTENSION=${PM_MARKDOWN_EXTENSION:-"md"}
 PM_DEFAULT_INPUT="README.md"
+OS=""
 
 set -e
 if [ "$DEBUG" == "true" ]
@@ -12,6 +13,18 @@ then
 else
 	set +x
 fi
+
+case "$(uname)" in
+	Darwin)
+		OS="Darwin"
+		;;
+	Linux)
+		OS="Linux"
+		;;
+	*)
+		OS="Unknown"
+		;;
+esac
 
 pm_pandoc_css()
 {
@@ -26,6 +39,23 @@ pm_pandoc_css()
 	echo $cache_file
 }
 
+pm_browser_open()
+{
+	local file_path="$1"
+
+	if [ "$OS" == "Darwin" ]
+	then
+		open "$file_path"
+		return $?
+	fi
+
+	if [ "$OS" == "Linux" ]
+	then
+		sensible-browser "$file_path"
+		return $?
+	fi
+}
+
 pm_open()
 {
 	local file_path
@@ -37,21 +67,31 @@ pm_open()
 	fi
 
 	file_path=$1
-	lynx=$(which lynx)
 	if [ ! -f "${file_path}" ]
 	then
 		echo "Preview file not found: ${file_path}" 1>&2
 		exit 2
 	fi
 
-	if [ -z "${lynx}" ] || [ "$PM_OPT_AVOID_LYNX" == "true" ]
+	if [ "$PM_OPT_AVOID_LYNX" == "true" ]
 	then
-		open "${file_path}"
-		return 0
+		pm_browser_open "${file_path}"
+		return $?
+	fi
+
+	if [ -z "$(which lynx)" ]
+	then
+		# Lynx not available to open markdown for preview
+		return 1
 	fi
 
 	lynx "${file_path}"
 	return 0
+}
+
+indent()
+{
+	sed "s/^/    /"
 }
 
 pm_pandoc()
@@ -61,15 +101,32 @@ pm_pandoc()
 
 	pandoc=$(which pandoc)
 	brew=$(which brew)
-	if [ -z "${pandoc}" ] && [ -z "${brew}" ]
+	apt=$(which apt-get)
+	if [ "$OS" == "Darwin" ]
 	then
-		echo "Please, install Brew (https://brew.sh) or Pandoc (http://pandoc.org)." 1>&2
-		exit 2
-	fi
-	if [ -z "${pandoc}" ]
+		if [ -z "${pandoc}" ] && [ -z "${brew}" ]
+		then
+			echo "Please, install Brew (https://brew.sh) or Pandoc (https://pandoc.org)." 1>&2
+			exit 2
+		fi
+		if [ -z "${pandoc}" ]
+		then
+			echo "Installing Pandoc (http://pandoc.org) for you ..."
+			$brew install pandoc 2>&1 | indent
+		fi
+	elif [ "$OS" == "Linux" ]
 	then
-		echo "Installing Pandoc (http://pandoc.org) for you ..."
-		$brew install pandoc | sed "s/^/    /"
+		if [ -z "$pandoc" ] && [ -z "$apt" ]
+		then
+			echo "Please install Pandoc (https://pandoc.org)." 1>&2
+			exit 2
+		fi
+		if [ -z "$pandoc" ]
+		then
+			echo "Installing Pandoc (https://pandoc.org) for you ..."
+			sudo $apt update 2>&1| indent
+			sudo $apt install -q -y pandoc 2>&1 | indent
+		fi
 	fi
 
 	pandoc \
