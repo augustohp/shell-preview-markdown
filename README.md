@@ -49,7 +49,7 @@ You can put the single file `preview-markdown` inside your *BIN* directories or
 declare a new `PATH` to where it is. If you want this easy, you can also use the
 line below:
 
-    sh <(curl -sSL http://git.io/sinister) -u https://git.io/preview-markdown
+    sh <(curl -sSL http://git.io/sinister) -u https://github.com/augustohp/shell-preview-markdown/raw/master/preview-markdown
 
 When you execute this, [Pandoc][] may be installed in the first execution.
 command - only supported on OSX.
